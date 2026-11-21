@@ -1,7 +1,7 @@
 {
   "name": "TrailLog Pro",
   "short_name": "TrailLog",
-  "description": "Diario de entrenamiento de trail: carga, subidas, plan y simulador de carrera.",
+  "description": "Diario de entrenamiento de montaña: correr, senderismo y bici. Carga, subidas, plan y simulador de rutas.",
   "lang": "es",
   "dir": "ltr",
   "start_url": "./",
