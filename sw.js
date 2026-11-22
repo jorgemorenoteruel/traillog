@@ -1,5 +1,5 @@
 /* TrailLog Pro — guarda la app en el dispositivo para que abra sin conexión. No toca tus datos ni las peticiones a otros sitios. */
-const VERSION = '2026.11.8';
+const VERSION = '2026.11.9';
 const CACHE = 'traillog-pro-' + VERSION;
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'icon-180.png'];
 
