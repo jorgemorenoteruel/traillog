@@ -6,7 +6,7 @@ import TLX, { h, useState, useEffect, registerSlot, onBind, lsGet, lsSet, isNum 
 const CFG_KEY = "tlx-sync";
 const DESC = "TrailLog Pro · sincronización (no borrar)";
 const MANIFEST = "traillog-sync.json";
-const PART = 900000; // por debajo del megabyte que la API devuelve entero por archivo
+const PART = 400000; // trozos pequeños: la API puede no devolver entero un gist grande
 const api = () => lsGet("tlx-sync-api", "https://api.github.com");
 
 let cfg = lsGet(CFG_KEY, null);
@@ -52,7 +52,7 @@ async function buildFiles(old) {
   for (let i = 0; i < s.length; i += PART) parts.push(s.slice(i, i + PART));
   const savedAt = Date.now();
   const files = {
-    [MANIFEST]: { content: JSON.stringify({ app: "TrailLogPro", v: 1, parts: parts.length, savedAt, device: device(), bytes: s.length }) },
+    [MANIFEST]: { content: JSON.stringify({ app: "TrailLogPro", v: 2, parts: parts.length, lens: parts.map((p) => p.length), savedAt, device: device(), bytes: s.length }) },
   };
   parts.forEach((c, i) => (files[`traillog-sync-${i + 1}.txt`] = { content: c }));
   for (const name of Object.keys(old || {}))
@@ -60,21 +60,47 @@ async function buildFiles(old) {
   return { files, savedAt };
 }
 
+class BadRemote extends Error {}
+
+// Lee la copia de GitHub y comprueba que está entera. Si un trozo llega cortado o vacío
+// (la API no siempre devuelve todo el contenido de un gist grande), lo pide por su enlace directo.
 async function readGist(json) {
-  const man = JSON.parse(json.files[MANIFEST].content);
+  const mf = json.files && json.files[MANIFEST];
+  if (!mf || !mf.content) throw new BadRemote("falta el índice");
+  let man;
+  try {
+    man = JSON.parse(mf.content);
+  } catch {
+    throw new BadRemote("índice ilegible");
+  }
   let s = "";
   for (let i = 1; i <= man.parts; i++) {
     const f = json.files[`traillog-sync-${i}.txt`];
-    if (!f) throw new Error("La copia en GitHub está incompleta.");
-    s += f.truncated ? await (await fetch(f.raw_url, { cache: "no-store" })).text() : f.content;
+    if (!f) throw new BadRemote(`falta el trozo ${i}`);
+    const want = man.lens ? man.lens[i - 1] : i < man.parts ? 900000 : null; // v1: trozos de 900 000
+    let c = typeof f.content === "string" ? f.content : "";
+    const short = f.truncated || !c || (isNum(want) && c.length !== want);
+    if (short && f.raw_url) {
+      try {
+        const r = await fetch(f.raw_url, { cache: "no-store" });
+        if (r.ok) c = await r.text();
+      } catch {}
+    }
+    s += c;
   }
+  if (isNum(man.bytes) && s.length !== man.bytes) throw new BadRemote(`llegaron ${s.length} de ${man.bytes} caracteres`);
   return { man, text: s };
 }
 
 let ignoreNext = false;
 async function applyRemote(text) {
   const { rt, lt, actions } = TLX.ctx;
-  const u = await rt(JSON.parse(text));
+  let u;
+  try {
+    u = await rt(JSON.parse(text));
+  } catch (e) {
+    throw new BadRemote("copia ilegible");
+  }
   const t = await lt(u, "merge", TLX.ctx.state);
   const rep = t._report || {};
   delete t._report;
@@ -94,6 +120,7 @@ async function applyRemote(text) {
 }
 
 let lastGistFiles = null;
+let remoteBad = false;
 export async function pull({ quiet = true } = {}) {
   if (!cfg || !cfg.token || !cfg.gistId || !TLX.ctx) return;
   const r = await gh(`/gists/${cfg.gistId}`, { etag: cfg.etag });
@@ -110,9 +137,22 @@ export async function pull({ quiet = true } = {}) {
   const json = await r.json();
   lastGistFiles = json.files;
   const etag = r.headers.get("ETag");
-  const { man, text } = await readGist(json);
+  let man, text;
   let n = 0;
-  if (!(man.device === device() && man.savedAt === cfg.lastPush)) n = await applyRemote(text);
+  try {
+    ({ man, text } = await readGist(json));
+    if (!(man.device === device() && man.savedAt === cfg.lastPush)) n = await applyRemote(text);
+  } catch (e) {
+    if (!(e instanceof BadRemote)) throw e;
+    // La copia de GitHub está incompleta: se sustituye por la de este dispositivo. No se pierde nada,
+    // porque al bajarla, los demás dispositivos la juntan con lo suyo.
+    console.warn("[TLX] copia remota incompleta:", e.message);
+    remoteBad = true;
+    dirty = true;
+    save({ ...cfg, etag, lastPull: Date.now() });
+    setStatus({ note: "La copia de GitHub estaba incompleta: la rehago con los datos de este dispositivo." });
+    return 0;
+  }
   save({ ...cfg, etag, lastPull: Date.now(), remoteSavedAt: man.savedAt, remoteDevice: man.device });
   if (n && !quiet) TLX.ctx.actions.say("Datos del otro dispositivo al día");
   else if (n) TLX.ctx.actions.say(`${n} ${n === 1 ? "cambio" : "cambios"} de tu otro dispositivo`);
@@ -121,7 +161,7 @@ export async function pull({ quiet = true } = {}) {
 
 export async function push() {
   if (!cfg || !cfg.token || !TLX.ctx) return;
-  if (cfg.gistId) await pull(); // primero, lo que haya cambiado fuera
+  if (cfg.gistId && !remoteBad) await pull(); // primero, lo que haya cambiado fuera
   const { files, savedAt } = await buildFiles(lastGistFiles);
   let r;
   if (cfg.gistId) r = await gh(`/gists/${cfg.gistId}`, { method: "PATCH", body: { files } });
@@ -131,6 +171,10 @@ export async function push() {
   lastGistFiles = json.files;
   save({ ...cfg, gistId: json.id, etag: r.headers.get("ETag"), lastPush: savedAt, lastPull: Date.now() });
   dirty = false;
+  if (remoteBad) {
+    remoteBad = false;
+    setStatus({ note: "Copia de GitHub rehecha con los datos de este dispositivo." });
+  }
   const { so, actions, state } = TLX.ctx;
   ignoreNext = true;
   actions.replaceState(await so(state)); // marca «pasado» y quita los avisos de copia pendiente
@@ -140,7 +184,7 @@ let running = null;
 export function syncNow(opts = {}) {
   if (running) return running;
   running = (async () => {
-    setStatus({ busy: true, error: null });
+    setStatus({ busy: true, error: null, note: remoteBad ? status.note : "" });
     try {
       await pull(opts);
       if (dirty || !cfg.gistId) await push();
@@ -289,6 +333,7 @@ function SyncCard() {
       h("div", { className: "tools" }, h(z, { small: true, icon: "sync", onClick: () => syncNow({ quiet: false }), disabled: st.busy }, "Sincronizar ahora")),
     ),
     st.error ? h(ue, { level: "warning", title: "No se ha podido sincronizar" }, st.error) : null,
+    !st.error && st.note ? h("p", { className: "small", style: { margin: "6px 0 0" } }, st.note) : null,
     h("p", { className: "dim small", style: { margin: "6px 0 0" } }, `Cuenta de GitHub: ${cfg.user || "–"}. Se sube sola 20 s después de cada cambio y al cerrar la app; al abrirla, baja lo nuevo.`),
     h(
       "div",
