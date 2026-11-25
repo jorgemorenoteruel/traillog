@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b2433"/>
+      <stop offset="1" stop-color="#0d1219"/>
+    </linearGradient>
+    <linearGradient id="back" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a4a61"/>
+      <stop offset="1" stop-color="#253144"/>
+    </linearGradient>
+    <linearGradient id="front" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#55688a"/>
+      <stop offset="1" stop-color="#2d3a50"/>
+    </linearGradient>
+    <linearGradient id="trail" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff7a1a"/>
+      <stop offset="1" stop-color="#ffb347"/>
+    </linearGradient>
+    <clipPath id="r"><rect width="256" height="256" rx="56"/></clipPath>
+  </defs>
+  <g clip-path="url(#r)">
+    <rect width="256" height="256" fill="url(#sky)"/>
+    <circle cx="190" cy="66" r="18" fill="#ffb347" opacity=".9"/>
+    <path d="M-10 214 L70 118 L104 150 L150 92 L266 214 Z" fill="url(#back)"/>
+    <path d="M-10 256 L-10 196 L58 140 L96 170 L140 112 L176 146 L198 128 L266 186 L266 256 Z" fill="url(#front)"/>
+    <path d="M140 112 L127 129 L136 134 L148 122 L152 128 L158 127 Z" fill="#e9eef5" opacity=".85"/>
+    <path d="M38 236 C70 222 66 204 92 196 C118 188 104 170 124 160 C138 152 132 138 140 116"
+          fill="none" stroke="url(#trail)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="140" cy="114" r="11" fill="#fff4e6" stroke="#ff7a1a" stroke-width="6"/>
+  </g>
+</svg>
