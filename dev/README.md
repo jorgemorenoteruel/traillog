@@ -1,5 +1,8 @@
 # TrailLog Pro · capa Plus
 
+> **Desde la versión 2026.11.13 todo esto está dentro de la app normal** (la carpeta `/beta/` solo lleva a ella). Esta carpeta se queda como histórico; ya no se usa para construir nada.
+
+
 Este directorio guarda **el código de las mejoras de noviembre de 2026** (versión 2026.11.10) y cómo volver a construirlas.
 La app original solo existe compilada en `index.html`; las mejoras se aplican encima sin tocar su lógica:
 
